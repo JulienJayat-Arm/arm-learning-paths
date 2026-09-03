@@ -1,0 +1,192 @@
+diff --git a/Kconfig b/Kconfig
+index f823ec2897809ae13b5d27c19538cb90995c477a..32d07eec7e685c6887b5eede2675b3569520e1e3 100644
+--- a/Kconfig
++++ b/Kconfig
+@@ -40,6 +40,27 @@ config RD_ASPEN_CFG1
+ config RD_ASPEN_CFG2
+     bool "RD-Aspen Cfg2"
+ 
++if RD_ASPEN_CFG2
++
++choice
++    prompt "Safety Island RTOS"
++    default SAFETY_ISLAND_ZEPHYR
++
++config SAFETY_ISLAND_ZEPHYR
++    bool "Zephyr"
++
++config SAFETY_ISLAND_FREERTOS
++    bool "FreeRTOS"
++
++endchoice
++
++config SAFETY_ISLAND_OS_OPTION
++    string
++    default "option_freertos" if SAFETY_ISLAND_FREERTOS
++    default "option_zephyr"
++
++endif # RD_ASPEN_CFG2
++
+ config RD_ASPEN_RTL
+     bool "RD-Aspen RTL"
+ 
+diff --git a/yocto/kas/zena-css-bsp.yml b/yocto/kas/zena-css-bsp.yml
+index a3091a708af68db9229e0e0d392a49efe9713c1f..1e0427ee0e524025a2b21704e25266627a402815 100644
+--- a/yocto/kas/zena-css-bsp.yml
++++ b/yocto/kas/zena-css-bsp.yml
+@@ -231,6 +231,9 @@ local_conf_header:
+   bsp-uninative: |
+     INHERIT += "uninative"
+     require ${COREBASE}/meta/conf/distro/include/yocto-uninative.inc
++  freertos: |
++    DISTRO_FEATURES:remove = "${@oe.utils.conditional('SAFETY_ISLAND_OS_OPTION', 'option_freertos', 'zephyr', '', d)}"
++    DISTRO_FEATURES:append = "${@oe.utils.conditional('SAFETY_ISLAND_OS_OPTION', 'option_freertos', ' freertos', '', d)}"
+ 
+ machine: fvp-rd-aspen
+ distro: nodistro
+diff --git a/yocto/meta-zena-css-safety-island/conf/layer.conf b/yocto/meta-zena-css-safety-island/conf/layer.conf
+index 573fd77d6936d57159a0f414e6b83bc8f441fa16..9d1618dc6af47620c9d66720b554d58368ca8769 100644
+--- a/yocto/meta-zena-css-safety-island/conf/layer.conf
++++ b/yocto/meta-zena-css-safety-island/conf/layer.conf
+@@ -15,6 +15,7 @@ BBFILE_COLLECTIONS += "meta-zena-css-safety-island"
+ BBFILE_PATTERN_meta-zena-css-safety-island = "^${LAYERDIR}/"
+ 
+ LAYERDEPENDS_meta-zena-css-safety-island = "\
++    arm-toolchain \
+     core \
+     meta-zena-css-bsp \
+     zephyrcore \
+diff --git a/yocto/meta-zena-css-safety-island/conf/machine/include/fvp/fvp-rd-aspen-extras.inc b/yocto/meta-zena-css-safety-island/conf/machine/include/fvp/fvp-rd-aspen-extras.inc
+index e0f3a2492cf89a7566b9f791f52bcd3c59b54c36..831a156dfac36c78d2905b91763851bc8cf4838f 100644
+--- a/yocto/meta-zena-css-safety-island/conf/machine/include/fvp/fvp-rd-aspen-extras.inc
++++ b/yocto/meta-zena-css-safety-island/conf/machine/include/fvp/fvp-rd-aspen-extras.inc
+@@ -6,3 +6,6 @@
+ 
+ require ${@bb.utils.contains('DISTRO_FEATURES', 'zephyr', \
+     'conf/machine/include/fvp/fvp-rd-aspen-zephyr.inc', '', d)}
++
++require ${@bb.utils.contains('DISTRO_FEATURES', 'freertos', \
++    'conf/machine/include/fvp/fvp-rd-aspen-freertos.inc', '', d)}
+diff --git a/yocto/meta-zena-css-safety-island/conf/machine/include/fvp/fvp-rd-aspen-freertos.inc b/yocto/meta-zena-css-safety-island/conf/machine/include/fvp/fvp-rd-aspen-freertos.inc
+new file mode 100644
+index 0000000000000000000000000000000000000000..85858146a455a07a42f9a56cdf18c32091f94732
+--- /dev/null
++++ b/yocto/meta-zena-css-safety-island/conf/machine/include/fvp/fvp-rd-aspen-freertos.inc
+@@ -0,0 +1,12 @@
++#
++# SPDX-FileCopyrightText: <text>Copyright 2025-2026 Arm Limited and/or its
++# affiliates <open-source-office@arm.com></text>
++#
++# SPDX-License-Identifier: MIT
++
++# Safety Island FreeRTOS defaults.
++# This file is included (via conf/machine/include/fvp/fvp-rd-aspen-extras.inc)
++# only when the distro enables Zephyr (DISTRO_FEATURES contains "freertos"),
++
++SAFETY_ISLAND_CL1_RECIPE ??= "freertos-demos-cl1"
++SAFETY_ISLAND_CL1_IMAGE ??= "${SAFETY_ISLAND_CL1_RECIPE}"
+diff --git a/yocto/meta-zena-css-safety-island/recipes-devtools/external-arm-toolchain/gcc-aarch64-none-elf-15_15.3.rel1.bb b/yocto/meta-zena-css-safety-island/recipes-devtools/external-arm-toolchain/gcc-aarch64-none-elf-15_15.3.rel1.bb
+new file mode 100644
+index 0000000000000000000000000000000000000000..f29922e3d7dfe6e68af9c970d379a4828070764f
+--- /dev/null
++++ b/yocto/meta-zena-css-safety-island/recipes-devtools/external-arm-toolchain/gcc-aarch64-none-elf-15_15.3.rel1.bb
+@@ -0,0 +1,21 @@
++# SPDX-License-Identifier: MIT
++
++require recipes-devtools/external-arm-toolchain/arm-binary-toolchain.inc
++
++COMPATIBLE_HOST = "(x86_64|aarch64).*-linux"
++
++SUMMARY = "Arm GNU Toolchain - AArch64 bare-metal target (aarch64-none-elf)"
++LICENSE = "GPL-3.0-with-GCC-exception & GPL-3.0-only"
++
++LIC_FILES_CHKSUM = "file://share/doc/gcc/Copying.html;md5=90014a59d1783b37a10240d4d0002c6e"
++
++BINNAME = "aarch64-none-elf"
++
++SRC_URI = "https://gitlab.arm.com/api/v4/projects/tooling%2Fgnu-toolchains-for-arm/packages/generic/gnu-toolchain/${PV}/arm-gnu-toolchain-${PV}-${HOST_ARCH}-${BINNAME}.tar.xz;name=gcc-${HOST_ARCH}"
++SRC_URI[gcc-aarch64.sha256sum] = "a1c6fdda8b479ea3e235d38dc0994790b840648b60e9fbaf88c82ca117a7a2df"
++SRC_URI[gcc-x86_64.sha256sum] = "1b07847728d455f18895f1ebd5d71a40f2ccb7cb3a84ca9a874d7f961a318ce4"
++
++S = "${WORKDIR}/arm-gnu-toolchain-${PV}-${HOST_ARCH}-${BINNAME}"
++
++UPSTREAM_CHECK_URI = "https://gitlab.arm.com/tooling/gnu-toolchains-for-arm"
++UPSTREAM_CHECK_REGEX = "releases/(?P<pver>\d+\.\d+\.rel\d+)"
+diff --git a/yocto/meta-zena-css-safety-island/recipes-kernel/freertos-kernel/freertos-demos-cl1.bb b/yocto/meta-zena-css-safety-island/recipes-kernel/freertos-kernel/freertos-demos-cl1.bb
+new file mode 100644
+index 0000000000000000000000000000000000000000..5364d6e9869b71e5f4cd684f34c24c6a2dac21f7
+--- /dev/null
++++ b/yocto/meta-zena-css-safety-island/recipes-kernel/freertos-kernel/freertos-demos-cl1.bb
+@@ -0,0 +1,72 @@
++# SPDX-License-Identifier: MIT
++
++SUMMARY = "FreeRTOS Demo on Safety Island Cluster 1"
++DESCRIPTION = "FreeRTOS demo application for Zena CSS SI CL1"
++
++#LICENSE = "CLOSED"
++LICENSE = "MIT"
++LIC_FILES_CHKSUM = "file://LICENSE.md;md5=5d1c92c2ddf8acf8480e3c18f3ab890b"
++
++inherit deploy
++inherit pv_tracker
++
++SRC_URI = "\
++    git://github.com/JulienJayat-Arm/FreeRTOS-Partner-Supported-Demos.git;protocol=https;branch=R82AE-demo;name=demos;destsuffix=git/demos \
++    git://github.com/JulienJayat-Arm/FreeRTOS-Kernel.git;protocol=https;branch=R82AE-demo;name=kernel;destsuffix=git/kernel \
++"
++#SRCREV_demos = "27962d523fa4d96e643e4f225dd3cd49bb7829de"
++#SRCREV_kernel = "def452c440997856806ed9a20058bd3c4acde315"
++SRCREV_demos = "${AUTOREV}"
++SRCREV_kernel = "${AUTOREV}"
++SRCREV_FORMAT = "demos_kernel"
++
++S = "${WORKDIR}/git/demos/CORTEX_R82AE_SMP_FVP_MPU_GCC_ARMCLANG"
++B = "${S}/build/zena_css"
++
++MULTIMACH_TARGET_SYS = "${MACHINE}_safety_island_c1-freertos"
++
++DEPENDS += "gcc-aarch64-none-elf-15-native"
++#DEPENDS += "gcc-aarch64-none-elf-native"
++DEPENDS += "cmake-native"
++
++do_configure() {
++    # Followings are workaround for gcc 13, gcc 13 does not support -mcpu=cortex-r82ae
++    # and gcc 13 will use builtin memset causing alignment abort.
++    # Uncomment followings when using gcc 13
++    #sed -i -e 's/-mcpu=cortex-r82ae/-mcpu=cortex-r82 -fno-builtin-memset/g' "${S}/gnu_toolchain.cmake"
++
++    cmake -S ${S} -B ${B} \
++        -DCMAKE_TOOLCHAIN_FILE=${S}/gnu_toolchain.cmake \
++        -DCMAKE_BUILD_TYPE=Debug \
++        -DKERNEL_DIR_PATH=${WORKDIR}/git/kernel \
++        -DR82AE_PLATFORM=zena_css_fvp
++}
++
++do_compile() {
++    cmake --build ${B} --parallel
++    aarch64-none-elf-objcopy -O binary \
++        ${B}/r82ae_smp_fvp_gcc_armclang.elf \
++        ${B}/r82ae_smp_fvp_gcc_armclang.bin
++}
++
++do_install() {
++    install -d ${D}/firmware
++
++    install -m 0644 \
++        ${B}/r82ae_smp_fvp_gcc_armclang.bin \
++        ${D}/firmware/${PN}.bin
++
++    install -m 0644 \
++        ${B}/r82ae_smp_fvp_gcc_armclang.elf \
++        ${D}/firmware/${PN}.elf
++}
++
++do_deploy() {
++    cp ${D}/firmware/* ${DEPLOYDIR}/
++}
++
++FILES:${PN} += "/firmware/*"
++SYSROOT_DIRS += "/firmware"
++INSANE_SKIP:${PN} += "buildpaths"
++
++addtask deploy after do_install
